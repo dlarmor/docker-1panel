@@ -20,7 +20,11 @@ on:
         description: "指定版本号 (留空则自动获取最新版)"
         required: false
         type: string
-
+      push_latest:
+        description: "是否附加 latest 标签 (仅对 V2 有效。编译旧版本时请取消勾选！)"
+        required: true
+        type: boolean
+        default: true
 
 jobs:
   build_images:
@@ -97,8 +101,10 @@ jobs:
         run: |
           VERSION=${{ steps.get_version.outputs.PANELVER }}
           USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
-          IS_LATEST=${{ matrix.is_latest }}
+          IS_LATEST_MATRIX=${{ matrix.is_latest }}
           MATRIX_NAME=${{ matrix.name }}
+          EVENT_NAME="${{ github.event_name }}"
+          INPUT_PUSH_LATEST="${{ inputs.push_latest }}"
           
           MAJOR_CHANNEL=${MATRIX_NAME,,}
           
@@ -106,8 +112,23 @@ jobs:
           TAGS="${USERNAME}/1panel:${VERSION}"
           TAGS="${TAGS},${USERNAME}/1panel:${MAJOR_CHANNEL}"
 
-          if [[ "${IS_LATEST}" == "true" ]]; then
+          APPLY_LATEST="false"
+          
+          if [[ "${IS_LATEST_MATRIX}" == "true" ]]; then
+            if [[ "${EVENT_NAME}" == "schedule" ]]; then
+              APPLY_LATEST="true"
+            elif [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+              if [[ "${INPUT_PUSH_LATEST}" == "true" ]]; then
+                APPLY_LATEST="true"
+              fi
+            fi
+          fi
+
+          if [[ "${APPLY_LATEST}" == "true" ]]; then
             TAGS="${TAGS},${USERNAME}/1panel:latest"
+            echo "🏷️ Appending 'latest' tag..."
+          else
+            echo "⏭️ Skipping 'latest' tag."
           fi
           
           echo "Generated Tags: $TAGS"
@@ -124,4 +145,3 @@ jobs:
             PANELVER=${{ steps.get_version.outputs.PANELVER }}
           platforms: linux/amd64,linux/arm64,linux/arm/v7,linux/ppc64le,linux/s390x
           tags: ${{ steps.meta.outputs.tags }}
-
